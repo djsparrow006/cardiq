@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardIQ — Admin</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Card<span>IQ</span></div>
+  <div class="nav">
+    <a href="/">Scan</a>
+    <a href="/contacts">Contacts</a>
+    <a href="/ask">Ask</a>
+    <a href="/admin" class="active">Admin</a>
+    <a href="/logout">Log out</a>
+  </div>
+</div>
+
+<main>
+  <h1>Team accounts</h1>
+  <p class="sub">Only admins can create accounts. Everyone has equal access to scan/contacts/ask once logged in.</p>
+
+  <div class="card" style="margin-bottom:24px;">
+    <h3 style="margin-top:0;font-family:'Space Grotesk',sans-serif;">Create account</h3>
+    <form method="POST" action="/admin/create-user">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div>
+          <label style="font-size:12px;color:var(--ink-soft);">Name</label>
+          <input type="text" name="name" required style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--ink-soft);">Password</label>
+          <input type="password" name="password" required style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--ink-soft);">Role</label>
+          <select name="role" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;">
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="margin-top:0;width:auto;padding:10px 20px;">Create</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;font-family:'Space Grotesk',sans-serif;">Existing accounts</h3>
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Created</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.name }}</td>
+          <td><span class="badge {{ 'high' if u.role == 'admin' else 'other' }}">{{ u.role }}</span></td>
+          <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>

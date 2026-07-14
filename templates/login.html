@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardIQ — Log in</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">Card<span>IQ</span></div>
+</div>
+
+<main style="max-width:380px;">
+  <h1>Log in</h1>
+  <p class="sub">Only admins can create new accounts — ask your team admin if you don't have one yet.</p>
+
+  {% if error %}
+    <div style="background:#fef2f2;color:#b91c1c;padding:12px 16px;border-radius:10px;font-size:14px;margin-bottom:16px;">
+      {{ error }}
+    </div>
+  {% endif %}
+
+  <form method="POST" class="card">
+    <label style="font-size:13px;color:var(--ink-soft);">Username</label>
+    <input type="text" name="name" required
+           style="width:100%;padding:12px;margin:6px 0 16px;border-radius:10px;border:1px solid var(--line);font-family:inherit;">
+
+    <label style="font-size:13px;color:var(--ink-soft);">Password</label>
+    <input type="password" name="password" required
+           style="width:100%;padding:12px;margin:6px 0 16px;border-radius:10px;border:1px solid var(--line);font-family:inherit;">
+
+    <button type="submit" class="btn btn-primary" style="margin-top:0;">Log in</button>
+  </form>
+</main>
+</body>
+</html>

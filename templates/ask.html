@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardIQ — Ask</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Card<span>IQ</span></div>
+  <div class="nav">
+    <a href="/">Scan</a>
+    <a href="/contacts">Contacts</a>
+    <a href="/ask" class="active">Ask</a>
+    <span class="user-picker">{{ current_user.name }} ({{ current_user.role }}) · <a href="/logout">Log out</a>{% if current_user.is_admin() %} · <a href="/admin">Admin</a>{% endif %}</span>
+  </div>
+</div>
+
+<main>
+  <h1>Ask about your contacts</h1>
+  <p class="sub">e.g. "give me the mail of the company related to college" or "what's Ravi's phone number"</p>
+
+  <div class="ask-box">
+    <input type="text" id="questionInput" placeholder="Ask a question about your contacts…">
+    <button id="askBtn">Ask</button>
+  </div>
+
+  <div class="answer empty" id="answerBox">Your answer will appear here.</div>
+</main>
+
+<script>
+const input = document.getElementById('questionInput');
+const askBtn = document.getElementById('askBtn');
+const answerBox = document.getElementById('answerBox');
+
+async function ask() {
+  const question = input.value.trim();
+  if (!question) return;
+
+  askBtn.disabled = true;
+  answerBox.className = 'answer';
+  answerBox.textContent = 'Thinking…';
+
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+    answerBox.textContent = data.success ? data.answer : (data.error || 'Something went wrong.');
+  } catch (e) {
+    answerBox.textContent = `Request failed: ${e.message}`;
+  } finally {
+    askBtn.disabled = false;
+  }
+}
+
+askBtn.addEventListener('click', ask);
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter') ask(); });
+</script>
+</body>
+</html>

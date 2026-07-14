@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardIQ — Scan</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Card<span>IQ</span></div>
+  <div class="nav">
+    <a href="/" class="active">Scan</a>
+    <a href="/contacts">Contacts</a>
+    <a href="/ask">Ask</a>
+    <span class="user-picker">{{ current_user.name }} ({{ current_user.role }}) · <a href="/logout">Log out</a>{% if current_user.is_admin() %} · <a href="/admin">Admin</a>{% endif %}</span>
+  </div>
+</div>
+
+<main>
+  <h1>Point, capture, done.</h1>
+  <p class="sub">Hold a card up to the camera and tap capture. Extracted contacts join the shared team pool instantly.</p>
+
+  <div class="type-switch">
+    <input type="radio" name="docType" id="tVisiting" value="visiting_card" checked>
+    <label for="tVisiting">Visiting Card</label>
+    <input type="radio" name="docType" id="tCollege" value="college_id">
+    <label for="tCollege">College ID</label>
+  </div>
+
+  <div class="stage">
+    <div>
+      <div class="video-card">
+        <video id="video" autoplay playsinline muted></video>
+      </div>
+      <canvas id="canvas"></canvas>
+      <button class="btn btn-primary" id="captureBtn">
+        <span id="btnIcon">◎</span> <span id="btnLabel">Capture</span>
+      </button>
+
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--ink-soft);">
+        <input type="checkbox" id="secondPhotoToggle">
+        This card needs a second photo (e.g. back side / extra details)
+      </label>
+    </div>
+
+    <div class="results-card" id="resultsCard">
+      <div id="resultsEmpty" style="color:var(--ink-soft);font-size:14px;text-align:center;padding:40px 0;">
+        🪪<br><br>Captured fields will appear here
+      </div>
+      <div id="resultsFilled" style="display:none">
+        <p style="font-size:12px;color:var(--ink-soft);margin-top:0;">Review and fix anything the scan got wrong before saving.</p>
+        <div id="fields"></div>
+        <div class="badge" id="confidenceBadge" style="margin-top:16px;"></div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button class="btn" id="retakeBtn" style="background:#f4f4f5;color:var(--ink);margin-top:0;">Retake</button>
+          <button class="btn btn-primary" id="confirmBtn" style="margin-top:0;">Confirm & Save</button>
+        </div>
+        <div id="saveStatus" style="margin-top:12px;font-size:13px;"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const captureBtn = document.getElementById('captureBtn');
+const btnIcon = document.getElementById('btnIcon');
+const btnLabel = document.getElementById('btnLabel');
+const resultsEmpty = document.getElementById('resultsEmpty');
+const resultsFilled = document.getElementById('resultsFilled');
+const fieldsEl = document.getElementById('fields');
+const confidenceBadge = document.getElementById('confidenceBadge');
+const retakeBtn = document.getElementById('retakeBtn');
+const confirmBtn = document.getElementById('confirmBtn');
+const saveStatus = document.getElementById('saveStatus');
+
+let pendingScan = null;  // holds {fields, raw_text, confidence, doc_type} awaiting confirmation
+const secondPhotoToggle = document.getElementById('secondPhotoToggle');
+let firstBlob = null;  // holds captured blob #1 while waiting for photo #2 (two-photo mode only)
+
+navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  .then(stream => { video.srcObject = stream; })
+  .catch(err => {
+    resultsEmpty.innerHTML = `⚠️<br><br>Camera access failed: ${err.message}`;
+  });
+
+const FIELD_LABELS = {
+  visiting_card: { name: "Name", company: "Company", phone: "Phone", email: "Email" },
+  college_id: { name: "Name", roll_no: "Roll No", department: "Department", valid_till: "Valid Till" },
+};
+
+function resetToCamera() {
+  pendingScan = null;
+  resultsFilled.style.display = 'none';
+  resultsEmpty.style.display = 'block';
+  saveStatus.textContent = '';
+}
+
+function grabFrameBlob() {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+}
+
+async function sendForExtraction(docType, blob, blob2) {
+  const formData = new FormData();
+  formData.append('frame', blob, 'capture.jpg');
+  if (blob2) formData.append('frame2', blob2, 'capture2.jpg');
+  formData.append('doc_type', docType);
+
+  try {
+      const res = await fetch('/scan-frame', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      resultsEmpty.style.display = 'none';
+      resultsFilled.style.display = 'block';
+      saveStatus.textContent = '';
+
+      if (!data.success) {
+        fieldsEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">${data.error}</p>`;
+        confirmBtn.style.display = 'none';
+      } else {
+        pendingScan = { fields: data.fields, raw_text: data.raw_text, confidence: data.confidence, doc_type: data.doc_type };
+        const labels = FIELD_LABELS[docType];
+        fieldsEl.innerHTML = Object.entries(data.fields).map(([k, v]) => `
+          <div class="field-row">
+            <span class="field-k">${labels[k] || k}</span>
+            <input data-field="${k}" value="${(v || '').replace(/"/g, '&quot;')}" placeholder="not found"
+                   style="border:none;background:none;text-align:right;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;width:60%;">
+          </div>
+        `).join('');
+        confidenceBadge.className = `badge ${data.confidence}`;
+        confidenceBadge.textContent = data.confidence === 'low' ? '⚠ Unclear — double-check fields below' : '✓ Clear scan';
+        confirmBtn.style.display = '';
+      }
+    } catch (e) {
+      resultsEmpty.style.display = 'none';
+      resultsFilled.style.display = 'block';
+      fieldsEl.innerHTML = `<p style="color:#b91c1c;font-size:14px">Request failed: ${e.message}</p>`;
+    } finally {
+      captureBtn.disabled = false;
+      btnIcon.textContent = '◎'; btnLabel.textContent = 'Capture';
+      firstBlob = null;
+    }
+}
+
+captureBtn.addEventListener('click', async () => {
+  const docType = document.querySelector('input[name="docType"]:checked').value;
+  const twoPhotoMode = secondPhotoToggle.checked;
+
+  if (twoPhotoMode && !firstBlob) {
+    // Step 1 of 2: capture the first photo, wait for the second.
+    firstBlob = await grabFrameBlob();
+    btnLabel.textContent = 'Capture 2nd photo';
+    return;
+  }
+
+  captureBtn.disabled = true;
+  btnIcon.textContent = '⏳'; btnLabel.textContent = 'Reading…';
+
+  const blob = twoPhotoMode ? firstBlob : await grabFrameBlob();
+  const blob2 = twoPhotoMode ? await grabFrameBlob() : null;
+
+  await sendForExtraction(docType, blob, blob2);
+});
+
+retakeBtn.addEventListener('click', () => {
+  firstBlob = null;
+  btnLabel.textContent = 'Capture';
+  resetToCamera();
+});
+
+confirmBtn.addEventListener('click', async () => {
+  if (!pendingScan) return;
+
+  // Pull possibly-edited values from the input fields
+  const editedFields = {};
+  fieldsEl.querySelectorAll('input[data-field]').forEach(input => {
+    editedFields[input.dataset.field] = input.value.trim() || null;
+  });
+
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Saving…';
+
+  try {
+    const res = await fetch('/scan-confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_type: pendingScan.doc_type,
+        fields: editedFields,
+        raw_text: pendingScan.raw_text,
+        confidence: pendingScan.confidence,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      saveStatus.style.color = 'var(--ok)';
+      saveStatus.textContent = data.matched_existing
+        ? `✓ Updated existing contact (category: ${data.category})`
+        : `✓ Saved as new contact (category: ${data.category})`;
+      setTimeout(resetToCamera, 1800);
+    } else {
+      saveStatus.style.color = '#b91c1c';
+      saveStatus.textContent = data.error || 'Failed to save.';
+    }
+  } catch (e) {
+    saveStatus.style.color = '#b91c1c';
+    saveStatus.textContent = `Request failed: ${e.message}`;
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Confirm & Save';
+  }
+});
+</script>
+</body>
+</html>
