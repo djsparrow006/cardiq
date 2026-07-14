@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardIQ — Contacts</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Card<span>IQ</span></div>
+  <div class="nav">
+    <a href="/">Scan</a>
+    <a href="/contacts" class="active">Contacts</a>
+    <a href="/ask">Ask</a>
+    <span class="user-picker">{{ current_user.name }} ({{ current_user.role }}) · <a href="/logout">Log out</a>{% if current_user.is_admin() %} · <a href="/admin">Admin</a>{% endif %}</span>
+  </div>
+</div>
+
+<main style="max-width:1000px;">
+  <h1>Shared contacts</h1>
+  <p class="sub">Every card the team has scanned, in one searchable pool.</p>
+
+  <div class="filter-bar" id="filterBar" style="display:flex; align-items:center; justify-content:space-between;">
+    <div style="display:flex;">
+      <div class="filter-chip active" data-cat="">All</div>
+      <div class="filter-chip" data-cat="education">Education</div>
+      <div class="filter-chip" data-cat="business">Business</div>
+      <div class="filter-chip" data-cat="vendor">Vendor</div>
+      <div class="filter-chip" data-cat="other">Other</div>
+    </div>
+    <a id="exportBtn" href="/api/contacts/export.xlsx" style="text-decoration:none; font-size:13px; color:var(--ink-soft); border:1px solid var(--ink-soft); border-radius:6px; padding:6px 12px;">Export as Excel</a>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Category</th>{% if current_user.is_admin() %}<th></th>{% endif %}</tr>
+      </thead>
+      <tbody id="contactRows"></tbody>
+    </table>
+    <div id="emptyState" style="display:none; text-align:center; padding:40px 0; color:var(--ink-soft);">
+      No contacts yet — go scan one.
+    </div>
+  </div>
+</main>
+
+<script>
+const IS_ADMIN = {{ 'true' if current_user.is_admin() else 'false' }};
+const rowsEl = document.getElementById('contactRows');
+const emptyState = document.getElementById('emptyState');
+const filterBar = document.getElementById('filterBar');
+let currentCategory = '';
+
+async function loadContacts(category = '') {
+  currentCategory = category;
+  const url = category ? `/api/contacts?category=${category}` : '/api/contacts';
+  const res = await fetch(url);
+  const contacts = await res.json();
+
+  if (contacts.length === 0) {
+    rowsEl.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+  rowsEl.innerHTML = contacts.map(c => `
+    <tr>
+      <td><strong>${c.name || '—'}</strong></td>
+      <td>${c.company || '—'}</td>
+      <td>${c.email || '—'}</td>
+      <td>${c.phone || '—'}</td>
+      <td><span class="badge ${c.category}">${c.category}</span></td>
+      ${IS_ADMIN ? `<td><button class="delete-btn" data-id="${c.id}" data-name="${(c.name || 'this contact').replace(/"/g, '&quot;')}"
+                     style="background:none;border:none;color:#b91c1c;cursor:pointer;font-size:13px;">Remove</button></td>` : ''}
+    </tr>
+  `).join('');
+}
+
+rowsEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.delete-btn');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const name = btn.dataset.name;
+  if (!confirm(`Remove ${name} from the shared contact pool? This can't be undone.`)) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Removing…';
+  try {
+    const res = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      loadContacts(currentCategory);
+    } else {
+      alert(data.error || 'Failed to remove contact.');
+      btn.disabled = false;
+      btn.textContent = 'Remove';
+    }
+  } catch (err) {
+    alert(`Request failed: ${err.message}`);
+    btn.disabled = false;
+    btn.textContent = 'Remove';
+  }
+});
+
+filterBar.addEventListener('click', (e) => {
+  const chip = e.target.closest('.filter-chip');
+  if (!chip) return;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  loadContacts(chip.dataset.cat);
+});
+
+const exportBtn = document.getElementById('exportBtn');
+function updateExportLink() {
+  exportBtn.href = currentCategory ? `/api/contacts/export.xlsx?category=${currentCategory}` : '/api/contacts/export.xlsx';
+}
+filterBar.addEventListener('click', updateExportLink);
+
+loadContacts();
+</script>
+</body>
+</html>
