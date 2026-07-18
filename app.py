@@ -109,6 +109,9 @@ def admin_create_user():
 
 
 # ── Pages (all require login) ───────────────────────────────────────────
+@app.route("/favicon.ico")
+def favicon():
+    return "", 204
 
 @app.route("/")
 @login_required
